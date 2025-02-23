@@ -16,10 +16,14 @@ from dex_retargeting.constants import RobotName, RetargetingType, HandType, get_
 from dex_retargeting.retargeting_config import RetargetingConfig
 from single_hand_detector import SingleHandDetector
 
+from dex_retargeting import yourdfpy as urdf
+import tempfile
+
 
 def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path: str):
     RetargetingConfig.set_default_urdf_dir(str(robot_dir))
     logger.info(f"Start retargeting with config {config_path}")
+    override = dict(add_dummy_free_joint=True)
     retargeting = RetargetingConfig.load_from_file(config_path).build()
 
     hand_type = "Right" if "right" in config_path.lower() else "Left"
@@ -28,16 +32,17 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     sapien.render.set_viewer_shader_dir("default")
     sapien.render.set_camera_shader_dir("default")
 
-    config = RetargetingConfig.load_from_file(config_path)
+    config = RetargetingConfig.load_from_file(config_path,override=override)
+    # config = RetargetingConfig.load_from_file(config_path)
 
     # Setup
     scene = sapien.Scene()
     render_mat = sapien.render.RenderMaterial()
     render_mat.base_color = [0.06, 0.08, 0.12, 1]
-    render_mat.metallic = 0.0
-    render_mat.roughness = 0.9
-    render_mat.specular = 0.8
-    scene.add_ground(-0.2, render_material=render_mat, render_half_size=[1000, 1000])
+    render_mat.metallic = 0.0 #金属度
+    render_mat.roughness = 0.9 #粗糙度
+    render_mat.specular = 0.8 #镜面反射
+    # scene.add_ground(-0.2, render_material=render_mat, render_half_size=[1000, 1000])
 
     # Lighting
     scene.add_directional_light(np.array([1, 1, -1]), np.array([3, 3, 3]))
@@ -48,7 +53,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
 
     # Camera
     cam = scene.add_camera(name="Cheese!", width=600, height=600, fovy=1, near=0.1, far=10)
-    cam.set_local_pose(sapien.Pose([0.50, 0, 0.0], [0, 0, 0, -1]))
+    cam.set_local_pose(sapien.Pose([1.0, 0, 0.0], [0, 0, 0, -1]))
 
     viewer = Viewer()
     viewer.set_scene(scene)
@@ -60,6 +65,8 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     # Load robot and set it to a good pose to take picture
     loader = scene.create_urdf_loader()
     filepath = Path(config.urdf_path)
+
+
     robot_name = filepath.stem
     loader.load_multiple_collisions_from_file = True
     if "ability" in robot_name:
@@ -82,7 +89,19 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     else:
         filepath = str(filepath)
 
-    robot = loader.load(filepath)
+
+    # print("Config:add_dummy_free_joint", config.add_dummy_free_joint)
+    if config.add_dummy_free_joint == True:
+        print("add dummy free joint")
+        robot_urdf = urdf.URDF.load(str(filepath), add_dummy_free_joints=True, build_scene_graph=False)
+        temp_dir = tempfile.mkdtemp(prefix="dex_retargeting-")
+        temp_path = f"{temp_dir}/{robot_name}"
+        robot_urdf.write_xml_file(temp_path)
+        robot = loader.load(temp_path)
+    else:
+        robot = loader.load(filepath)
+
+    
 
     if "ability" in robot_name:
         robot.set_pose(sapien.Pose([0, 0, -0.15]))
@@ -101,7 +120,9 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
 
     # Different robot loader may have different orders for joints
     sapien_joint_names = [joint.get_name() for joint in robot.get_active_joints()]
+    # print(sapien_joint_names)
     retargeting_joint_names = retargeting.joint_names
+    print("retargeting joint name:",retargeting_joint_names)
     retargeting_to_sapien = np.array([retargeting_joint_names.index(name) for name in sapien_joint_names]).astype(int)
 
     while True:
@@ -113,6 +134,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
             return
 
         _, joint_pos, keypoint_2d, _ = detector.detect(rgb)
+        
         bgr = detector.draw_skeleton_on_image(bgr, keypoint_2d, style="default")
         cv2.imshow("realtime_retargeting_demo", bgr)
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -130,6 +152,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
                 origin_indices = indices[0, :]
                 task_indices = indices[1, :]
                 ref_value = joint_pos[task_indices, :] - joint_pos[origin_indices, :]
+            # print(ref_value)
             qpos = retargeting.retarget(ref_value)
             robot.set_qpos(qpos[retargeting_to_sapien])
 
@@ -149,6 +172,8 @@ def produce_frame(queue: multiprocessing.Queue, camera_path: Optional[str] = Non
         if not success:
             continue
         queue.put(image)
+
+
 
 
 def main(
@@ -177,7 +202,7 @@ def main(
 
     producer_process.join()
     consumer_process.join()
-    time.sleep(5)
+    time.sleep(3)
 
     print("done")
 
