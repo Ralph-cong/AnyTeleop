@@ -1,11 +1,7 @@
 import torch
 import numpy as np
 from ultralytics import YOLO
-from wilor.models import WiLoR, load_wilor
-from wilor.utils import recursive_to
-from wilor.datasets.vitdet_dataset import ViTDetDataset
 import cv2
-from wilor.utils.renderer import Renderer, cam_crop_to_full
 from wilor_mini.pipelines.wilor_hand_pose3d_estimation_pipeline import WiLorHandPose3dEstimationPipeline
 
 OPERATOR2MANO = np.array(

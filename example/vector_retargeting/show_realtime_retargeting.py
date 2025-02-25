@@ -23,7 +23,7 @@ import tempfile
 def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path: str):
     RetargetingConfig.set_default_urdf_dir(str(robot_dir))
     logger.info(f"Start retargeting with config {config_path}")
-    override = dict(add_dummy_free_joint=True)
+    
     retargeting = RetargetingConfig.load_from_file(config_path).build()
 
     hand_type = "Right" if "right" in config_path.lower() else "Left"
@@ -32,8 +32,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     sapien.render.set_viewer_shader_dir("default")
     sapien.render.set_camera_shader_dir("default")
 
-    config = RetargetingConfig.load_from_file(config_path,override=override)
-    # config = RetargetingConfig.load_from_file(config_path)
+    config = RetargetingConfig.load_from_file(config_path)
 
     # Setup
     scene = sapien.Scene()
@@ -42,7 +41,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     render_mat.metallic = 0.0 #金属度
     render_mat.roughness = 0.9 #粗糙度
     render_mat.specular = 0.8 #镜面反射
-    # scene.add_ground(-0.2, render_material=render_mat, render_half_size=[1000, 1000])
+    # scene.add_ground(-0.3, render_material=render_mat, render_half_size=[1000, 1000])
 
     # Lighting
     scene.add_directional_light(np.array([1, 1, -1]), np.array([3, 3, 3]))
@@ -89,19 +88,9 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
     else:
         filepath = str(filepath)
 
-
-    # print("Config:add_dummy_free_joint", config.add_dummy_free_joint)
-    if config.add_dummy_free_joint == True:
-        print("add dummy free joint")
-        robot_urdf = urdf.URDF.load(str(filepath), add_dummy_free_joints=True, build_scene_graph=False)
-        temp_dir = tempfile.mkdtemp(prefix="dex_retargeting-")
-        temp_path = f"{temp_dir}/{robot_name}"
-        robot_urdf.write_xml_file(temp_path)
-        robot = loader.load(temp_path)
-    else:
-        robot = loader.load(filepath)
-
     
+    robot = loader.load(str(filepath))
+
 
     if "ability" in robot_name:
         robot.set_pose(sapien.Pose([0, 0, -0.15]))
@@ -120,9 +109,7 @@ def start_retargeting(queue: multiprocessing.Queue, robot_dir: str, config_path:
 
     # Different robot loader may have different orders for joints
     sapien_joint_names = [joint.get_name() for joint in robot.get_active_joints()]
-    # print(sapien_joint_names)
     retargeting_joint_names = retargeting.joint_names
-    print("retargeting joint name:",retargeting_joint_names)
     retargeting_to_sapien = np.array([retargeting_joint_names.index(name) for name in sapien_joint_names]).astype(int)
 
     while True:
@@ -202,7 +189,7 @@ def main(
 
     producer_process.join()
     consumer_process.join()
-    time.sleep(3)
+    time.sleep(5)
 
     print("done")
 
