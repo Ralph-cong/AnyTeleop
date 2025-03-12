@@ -43,12 +43,12 @@ class XArm7Leap(BaseAgent):
             qpos=np.array(
                 [
                     0.0,
-                    -0.6,
+                    0.3,
                     0.0,
-                    0.6,
-                    0.0,
-                    0.0,
-                    -3.0,
+                    0.5,
+                    np.pi,
+                    2.2,
+                    np.pi,
                     0.0,
                     0.0, 
                     0.0,
